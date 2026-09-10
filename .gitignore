@@ -1,0 +1,4 @@
+.research/
+node_modules/
+.idea/
+.Deno_dir/

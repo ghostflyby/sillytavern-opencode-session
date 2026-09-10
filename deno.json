@@ -1,0 +1,19 @@
+{
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1"
+  },
+  "tasks": {
+    "mock": "deno run --allow-net=127.0.0.1 mock/server.ts",
+    "verify:source": "deno run --allow-net scripts/verify-pinned-source.ts",
+    "verify:transport": "deno run -A scripts/transport-verify.ts"
+  },
+  "fmt": {
+    "exclude": [".research"]
+  },
+  "lint": {
+    "exclude": [".research"]
+  },
+  "test": {
+    "exclude": [".research"]
+  }
+}
