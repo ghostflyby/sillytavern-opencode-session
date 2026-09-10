@@ -55,9 +55,10 @@ Custom（OpenAI-compatible）连接 自带的 `custom_include_headers`
 - **保留已有自定义头**：合并时保留连接设置中"自定义包含标头"的其余内容； 同名的
   `x-opencode-session`（大小写不敏感）会被替换而不是重复。
 - **失败可见**：全局自定义标头若不是受支持的 YAML mapping（嵌套、流式集合、
-  锚点、多文档等），扩展不注入并弹窗提示，保持原样——此时服务端本来也会丢弃
+  多文档等），扩展不注入并弹窗提示，保持原样——此时服务端本来也会丢弃
   全部自定义标头。
 - **手动 ID 不落盘**：手动会话 ID 只保存在扩展设置里，不写入聊天 metadata。
+- 首次为某个聊天自动分配 ID 时会弹出一次提示通知。
 
 ## 已知限制
 
@@ -71,6 +72,8 @@ Custom（OpenAI-compatible）连接 自带的 `custom_include_headers`
   该 header 的语义。不同 header 提供不同的会话标识，但不必然等于"上下文隔离"。
 - 本扩展只生成随机 UUID 形式的 ID；若上游要求先调用其会话创建接口，请使用
   "手动会话 ID"填入上游返回的 ID。
+- 合并时会把你已有的自定义标头规范化为单个 mapping 并统一为双引号标量——语义
+  等价但格式可能改变；行内 `#` 注释不会被剥离，会并入值本身。
 
 ## 验证记录
 
@@ -79,11 +82,13 @@ Custom（OpenAI-compatible）连接 自带的 `custom_include_headers`
 - `deno task verify:source`：对 pinned commit
   `8172dcd0ee672d3cd9a5e5f7af134f91a45cd2b8`（v1.18.0）的关键链路断言（事件名、
   `custom_include_headers`、服务端合并、上游 fetch 头展开、扩展上下文 API）。
-- `deno task verify:transport`：下载 pinned 源码，用 Deno 安装依赖并启动真实
-  SillyTavern 服务端（回环地址、独立数据目录），以 HTTP 方式调用
-  `/api/backends/chat-completions/generate`，验证模拟上游在**非流式与流式**两
-  种请求下都收到了请求体中指定的 `x-opencode-session`。结果写入
-  `.research/transport/transport-results.json`。
+- `deno task verify:transport`：在系统临时目录安装官方 npm 包
+  `sillytavern@1.18.0`（与上述 pinned commit 同一 release，registry sha512
+  摘要由 Deno 自动校验），启动真实 SillyTavern
+  服务端（回环地址、临时数据目录），以 HTTP 方式调用
+  `/api/backends/chat-completions/generate`，验证模拟上游在**非流式与
+  流式**两种请求下都收到了请求体中指定的 `x-opencode-session`。全程不改动仓库内
+  任何文件。
 
 ## 固定版本源码依据（v1.18.0，commit 8172dcd）
 

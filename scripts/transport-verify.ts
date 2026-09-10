@@ -1,24 +1,28 @@
 /**
- * 真实服务端转发验证（端到端）：
+ * 真实服务端转发验证（端到端，基于 npm 官方发布包）：
  *
- * 1. 在 .research/transport 下展开 pinned commit 的 SillyTavern 源码；
- * 2. 用 Deno 安装依赖并启动真实服务端（仅监听回环地址，独立 data 目录）；
- * 3. 启动本仓库的模拟上游，配置为 Custom 连接；
- * 4. 以 HTTP 方式调用真实 /api/backends/chat-completions/generate（非流式与
- *    流式各一），断言模拟上游收到的 x-opencode-session 与请求体一致。
+ * 1. 在系统临时目录创建独立工程，`deno install` 安装 npm:sillytavern@1.18.0
+ *    （精确版本；registry sha512 摘要由 Deno 自动校验），仓库内不产生任何文件；
+ * 2. 断言安装的 package.json 版本与 verify:source 的 pinned commit 同一 release；
+ * 3. 启动真实服务端（仅监听回环地址，临时数据目录）；
+ * 4. 调用真实 /api/backends/chat-completions/generate（非流式与流式各一），
+ *    断言模拟上游收到的 x-opencode-session 与请求体一致。
  *
  * 运行：deno task verify:transport
  */
 
 import { startMockServer } from "../mock/server.ts";
 
-const SHA = "8172dcd0ee672d3cd9a5e5f7af134f91a45cd2b8";
+const ST_VERSION = "1.18.0";
 const ST_PORT = 18300;
 const MOCK_PORT = 18301;
 const BASE = `http://127.0.0.1:${ST_PORT}`;
 
-const root = new URL("../.research/transport/", import.meta.url).pathname;
-const stDir = `${root}SillyTavern-${SHA}`;
+const tmpRoot = `${
+  (Deno.env.get("TMPDIR") ?? "/tmp").replace(/\/+$/, "")
+}/st-ocs-transport`;
+const workDir = `${tmpRoot}/app`;
+const stDir = `${workDir}/node_modules/sillytavern`;
 
 async function exists(path: string) {
   try {
@@ -29,54 +33,53 @@ async function exists(path: string) {
   }
 }
 
-async function downloadSource() {
-  if (await exists(`${stDir}/package.json`)) {
-    console.log(`[transport] 复用已存在的源码目录 ${stDir}`);
+async function installSillyTavern() {
+  if (await exists(`${stDir}/server.js`)) {
+    console.log(
+      `[transport] 复用已安装的 sillytavern@${ST_VERSION}（${stDir}）`,
+    );
     return;
   }
-  await Deno.mkdir(root, { recursive: true });
-  console.log("[transport] 下载 pinned 源码包…");
-  const response = await fetch(
-    `https://codeload.github.com/SillyTavern/SillyTavern/tar.gz/${SHA}`,
+  await Deno.mkdir(workDir, { recursive: true });
+  await Deno.writeTextFile(
+    `${workDir}/package.json`,
+    JSON.stringify(
+      { private: true, dependencies: { sillytavern: ST_VERSION } },
+      null,
+      2,
+    ),
   );
-  if (!response.ok) throw new Error(`源码下载失败：HTTP ${response.status}`);
-  const tgz = `${root}st.tgz`;
-  await Deno.writeFile(tgz, response.body!);
-  const tar = new Deno.Command("tar", {
-    args: ["-xzf", tgz, "-C", root],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const status = await tar.output();
-  if (!status.success) throw new Error("tar 解压失败");
-  console.log(`[transport] 源码就绪：${stDir}`);
-}
-
-async function installDependencies() {
-  if (await exists(`${stDir}/node_modules`)) {
-    console.log("[transport] 依赖已安装，跳过");
-    return;
-  }
-  console.log("[transport] deno install（可能需要数分钟）…");
+  console.log(
+    `[transport] deno install sillytavern@${ST_VERSION}（首次需数分钟）…`,
+  );
   const install = new Deno.Command(Deno.execPath(), {
-    args: ["install", "--entrypoint", "server.js"],
-    cwd: stDir,
+    args: ["install"],
+    cwd: workDir,
     stdout: "inherit",
     stderr: "inherit",
   });
   const status = await install.output();
   if (!status.success) throw new Error("deno install 失败（见上方输出）");
+  const pkg = JSON.parse(await Deno.readTextFile(`${stDir}/package.json`));
+  if (pkg.version !== ST_VERSION) {
+    throw new Error(
+      `安装的 sillytavern 版本为 ${pkg.version}，期望 ${ST_VERSION}`,
+    );
+  }
+  console.log(`[transport] sillytavern@${pkg.version} 安装完成`);
 }
 
 function startServer() {
-  const dataRoot = `${root}data`;
+  const dataRoot = `${tmpRoot}/data`;
   Deno.mkdirSync(dataRoot, { recursive: true });
-  const serverLog = `${root}server.log`;
+  const serverLog = `${tmpRoot}/server.log`;
   const command = new Deno.Command(Deno.execPath(), {
     args: [
       "run",
       "-A",
       "server.js",
+      // npm 包自带 config.yaml 里 browserLaunch.enabled: true，会自动打开系统浏览器
+      "--browserLaunchEnabled=false",
       "--port",
       String(ST_PORT),
       "--dataRoot",
@@ -115,9 +118,7 @@ async function waitForServer(timeoutMs = 120_000) {
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(
-    "服务端启动超时，请查看 .research/transport/server.log(.err)",
-  );
+  throw new Error(`服务端启动超时，请查看 ${tmpRoot}/server.log(.err)`);
 }
 
 async function getCsrf() {
@@ -191,8 +192,7 @@ const results = {
 const mock = startMockServer({ port: MOCK_PORT });
 let server: Deno.ChildProcess | undefined;
 try {
-  await downloadSource();
-  await installDependencies();
+  await installSillyTavern();
   server = startServer();
   console.log("[transport] 等待真实服务端启动…");
   await waitForServer();
@@ -229,11 +229,6 @@ try {
   server?.kill();
   await server?.status.catch(() => {});
   mock.stop();
-  await Deno.mkdir(root, { recursive: true });
-  await Deno.writeTextFile(
-    `${root}transport-results.json`,
-    JSON.stringify(results, null, 2),
-  );
-  console.log(`[transport] 结果已写入 ${root}transport-results.json`);
+  console.log(`[transport] 结果：${JSON.stringify(results)}`);
 }
 Deno.exit(results.error ? 1 : 0);
