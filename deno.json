@@ -1,6 +1,6 @@
 {
   "imports": {
-    "@std/assert": "jsr:@std/assert@1"
+    "@std/assert": "jsr:@std/assert@1.0.19"
   },
   "tasks": {
     "mock": "deno run --allow-net=127.0.0.1 mock/server.ts",
