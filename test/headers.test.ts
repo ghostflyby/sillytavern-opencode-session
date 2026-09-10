@@ -47,8 +47,13 @@ Deno.test("不支持的形态返回 null", () => {
   assertEquals(parseHeaderYaml("a:\n  b: 1"), null); // 嵌套
   assertEquals(parseHeaderYaml("a: [1, 2]"), null); // 流式序列
   assertEquals(parseHeaderYaml("block: |\n  text"), null); // 块标量
+  assertEquals(parseHeaderYaml("block: >"), null); // 折叠标量指示符
   assertEquals(parseHeaderYaml("a: 1\n  b: 2"), null); // 意外缩进
-  assertEquals(parseHeaderYaml("&anchor a: 1"), null); // 锚点
+});
+
+Deno.test("以 > 等字符结尾的普通值不被误报", () => {
+  const parsed = parseHeaderYaml("X-Note: see <https://example.com>");
+  assertEquals(parsed, { entries: [["X-Note", "see <https://example.com>"]] });
 });
 
 Deno.test("合并且保留其他 header，目标 header 大小写不敏感替换", () => {

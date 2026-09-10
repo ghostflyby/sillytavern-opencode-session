@@ -81,7 +81,7 @@ export async function ensureSession(
 /**
  * 并发安全的工厂：同一页面内并发生成请求会共享同一个"进行中"的分配流程，
  * 避免两个请求各自生成不同 ID、后写覆盖先写导致孤儿会话。
- * 键为 manual 标记之外的「身份 + metadata 对象引用」。
+ * 缓存键为「身份 + 手动 ID + metadata 缺失标记」（依赖聊天名唯一性）。
  */
 export function createEnsureSession(options = {}) {
   const inflight = new Map();
@@ -97,11 +97,23 @@ export function createEnsureSession(options = {}) {
       identity,
       manualId: settings?.manualId ?? "",
       genId: options.genId,
-      persist: () => ctx?.saveMetadata?.(),
+      persist: () =>
+        shouldPersistForChat(identity.chat, ctx?.getCurrentChatId?.())
+          ? ctx?.saveMetadata?.()
+          : undefined,
     }).finally(() => inflight.delete(key));
     inflight.set(key, promise);
     return promise;
   };
+}
+
+/**
+ * persist 前判断分配时的聊天是否仍是当前聊天：getCurrentChatId 在调用时读取
+ * 实时状态（ctx.chatMetadata 是快照，检测不到切换）。无法判定时保守持久化。
+ */
+export function shouldPersistForChat(identityChat, currentChatId) {
+  if (typeof currentChatId !== "string") return true;
+  return currentChatId === identityChat;
 }
 
 /** 读取当前聊天已保存的会话记录（供 UI 展示）。 */
@@ -113,10 +125,8 @@ export function readSessionRecord(metadata) {
 /** 删除当前聊天的会话记录（供"重新生成 ID"按钮使用）。 */
 export async function resetSession(ctx) {
   const metadata = ctx?.chatMetadata;
-  if (!metadata) return false;
+  if (!metadata || typeof ctx?.saveMetadata !== "function") return false;
   delete metadata[METADATA_KEY];
-  if (typeof ctx?.saveMetadata === "function") {
-    await ctx.saveMetadata();
-  }
+  await ctx.saveMetadata();
   return true;
 }

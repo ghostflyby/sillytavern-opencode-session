@@ -95,7 +95,7 @@ export function parseHeaderYaml(text) {
     const line = rawLine.replace(/\t/g, "  ");
     if (line.trim() === "" || /^\s*#/.test(line)) continue;
     if (/^\s*(---|\.\.\.)\s*$/.test(line)) return null;
-    if (/[&*|>]$/.test(line.trim())) return null; // 锚点/块标量开头，不支持
+    // 块标量/锚点等由 parseScalar 对值的起始字符检查兜底（a: |、a: &anchor 等）
     let m = /^(\s*)-(?:\s+(.*))?$/.exec(line);
     if (m) {
       if (mode === "map") return null;

@@ -6,6 +6,7 @@ import {
   METADATA_KEY,
   readSessionRecord,
   resetSession,
+  shouldPersistForChat,
 } from "../src/session.js";
 
 const CHAR_CTX = {
@@ -159,4 +160,46 @@ Deno.test("readSessionRecord 与 resetSession", async () => {
   const ctx = { chatMetadata: metadata, saveMetadata: () => Promise.resolve() };
   assertEquals(await resetSession(ctx), true);
   assertEquals(readSessionRecord(metadata), null);
+});
+
+Deno.test("resetSession 无 saveMetadata 时返回 false", async () => {
+  const ctx = { chatMetadata: { [METADATA_KEY]: { id: "x" } } };
+  assertEquals(await resetSession(ctx), false);
+});
+
+Deno.test("聊天切换后不持久化到别的聊天", async () => {
+  let currentChat = "chat-a";
+  let saved = false;
+  const ctx = {
+    ...CHAR_CTX,
+    chatMetadata: {} as Record<
+      string,
+      { id: string; owner: { who: string; chat: string }; createdAt?: string }
+    >,
+    getCurrentChatId: () => currentChat,
+    saveMetadata: () => {
+      saved = true;
+      return Promise.resolve();
+    },
+  };
+  const ensure = createEnsureSession({
+    genId: () => {
+      // 模拟：生成 ID 之后、持久化守卫执行之前，用户切到了聊天 B
+      currentChat = "chat-b";
+      return "id-1";
+    },
+  });
+  const result = await ensure(ctx, {});
+  assertEquals(result.id, "id-1");
+  assertEquals(saved, false);
+  // 切回聊天 A 后再次生成：复用内存中的记录，不重复分配
+  currentChat = "chat-a";
+  const again = await ensure(ctx, {});
+  assertEquals(again, { id: "id-1", created: false });
+});
+
+Deno.test("shouldPersistForChat 无法判定时保守持久化", () => {
+  assertEquals(shouldPersistForChat("chat-a", "chat-a"), true);
+  assertEquals(shouldPersistForChat("chat-a", "chat-b"), false);
+  assertEquals(shouldPersistForChat("chat-a", undefined), true);
 });

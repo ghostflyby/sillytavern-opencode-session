@@ -231,12 +231,6 @@ function init() {
       () => refreshPanel(window.SillyTavern.getContext(), loadSettings(ctx)),
     );
   }
-  ctx.eventSource.on(
-    ctx.eventTypes.APP_READY_EVENT ?? changedEvent ?? readyEvent,
-    () => {
-      refreshPanel(window.SillyTavern.getContext(), loadSettings(ctx));
-    },
-  );
   refreshPanel(ctx, settings);
   console.log(
     `[${MODULE_NAME}] 已加载。metadata 键：${METADATA_KEY}，header：${TARGET_HEADER}`,

@@ -14,6 +14,8 @@ const CHECKS = [
     file: "public/scripts/openai.js",
     expect: [
       "CHAT_COMPLETION_SETTINGS_READY",
+      "generate_data.custom_url = settings.custom_url",
+      "generate_data.custom_include_headers = settings.custom_include_headers",
       "custom_include_headers",
       "/api/backends/chat-completions/generate",
     ],
@@ -32,9 +34,17 @@ const CHECKS = [
       "getCurrentChatId",
       "chatMetadata",
       "saveMetadata",
+      "saveSettingsDebounced",
       "eventTypes",
       "extensionSettings",
+      "characterId",
+      "groupId",
+      "chatCompletionSettings",
     ],
+  },
+  {
+    file: "public/lib/eventemitter.js",
+    expect: ["makeLast"],
   },
   {
     file: "public/scripts/events.js",
